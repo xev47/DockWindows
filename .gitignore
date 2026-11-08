@@ -1,0 +1,35 @@
+# User-specific config and logs
+config.json
+log.txt
+.superpowers
+
+# .NET build output
+bin/
+obj/
+*.dll
+*.exe
+/rust-dock/target/
+
+# NuGet
+/packages/
+
+# IDE files
+.idea/
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln.docstates
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Package files
+*.zip
+*.tar.gz
+*.rar
+
+# Docs / superpowers
+docs/superpowers/
+DOCUMENTATION.md

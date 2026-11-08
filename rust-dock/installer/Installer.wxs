@@ -1,0 +1,90 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Package Name="Dock Windows"
+           Manufacturer="Cedro Software"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="A9DA1986-F8C2-43A1-82DB-3CB26353DE21"
+           Language="1036"
+           Scope="perUser">
+
+    <MajorUpgrade DowngradeErrorMessage="Une version plus récente de [ProductName] est déjà installée."
+                  AllowSameVersionUpgrades="yes" />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Le binaire ne dépend que des DLL système : aucune redistribution tierce
+         n'est requise sur le PC cible. -->
+    <!-- VersionNT est plafonné par l'engine MSI (603 sur certaines éditions de
+         Windows 11) : le numéro de build est lu dans le Registre (REG_SZ). -->
+    <Property Id="WINDOWS_BUILD_NUMBER">
+      <RegistrySearch Id="SearchWindowsBuildNumber" Root="HKLM"
+                      Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+                      Name="CurrentBuildNumber" Type="raw" />
+    </Property>
+
+    <Launch Condition="Installed OR VersionNT64"
+            Message="[ProductName] nécessite une version 64 bits de Windows." />
+    <Launch Condition="Installed OR WINDOWS_BUILD_NUMBER &gt;= 10240"
+            Message="[ProductName] nécessite Windows 10 ou Windows 11." />
+
+    <Icon Id="DockWindowsIcon" SourceFile="..\assets\dock-windows.ico" />
+    <Property Id="ARPPRODUCTICON" Value="DockWindowsIcon" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+    <!-- Passer LAUNCHDOCK=0 pour ne pas démarrer le dock après une installation
+         silencieuse. -->
+    <Property Id="LAUNCHDOCK" Value="1" />
+
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+    <!-- Permet de remplacer le binaire alors que le dock est encore lancé. -->
+    <util:CloseApplication Target="dock-windows.exe" CloseMessage="yes"
+                           TerminateProcess="1" Timeout="3"
+                           PromptToContinue="no" RebootPrompt="no" />
+
+    <InstallUISequence>
+      <Custom Action="LaunchApp" After="ExecuteAction"
+              Condition="NOT Installed AND LAUNCHDOCK = 1" />
+    </InstallUISequence>
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="PROGRAMSDIR" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="DockWindows" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="DesktopFolder" />
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppMenuDir" Name="Dock Windows" />
+    </StandardDirectory>
+
+    <Component Id="CMP_MainExe" Directory="INSTALLFOLDER" Guid="*">
+      <File Id="FILE_Exe" Source="..\target\release\dock-windows.exe" KeyPath="yes">
+        <Shortcut Id="S_Desktop" Directory="DesktopFolder" Name="Dock Windows"
+                  WorkingDirectory="INSTALLFOLDER" Icon="DockWindowsIcon" IconIndex="0" />
+        <Shortcut Id="S_StartMenu" Directory="AppMenuDir" Name="Dock Windows"
+                  WorkingDirectory="INSTALLFOLDER" Icon="DockWindowsIcon" IconIndex="0" />
+      </File>
+      <RemoveFolder Id="R_InstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+    </Component>
+
+    <Component Id="CMP_AppMenuCleanup" Directory="AppMenuDir" Guid="*">
+      <RemoveFolder Id="R_AppMenu" Directory="AppMenuDir" On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\Cedro\DockWindows" Name="installed"
+                     Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Feature Id="Complete" Title="Dock Windows" Level="1">
+      <ComponentRef Id="CMP_MainExe" />
+      <ComponentRef Id="CMP_AppMenuCleanup" />
+    </Feature>
+
+    <ui:WixUI Id="WixUI_Minimal" />
+  </Package>
+
+  <Fragment>
+    <CustomAction Id="LaunchApp" DllEntry="WixUnelevatedShellExec"
+                  Execute="immediate" Return="ignore" Impersonate="yes"
+                  BinaryRef="Wix4UtilCA_X64" />
+    <Property Id="WixUnelevatedShellExecTarget" Value="[#FILE_Exe]" />
+  </Fragment>
+</Wix>
