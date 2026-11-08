@@ -37,6 +37,7 @@ const MAX_ICON_SIZE: f32 = 64.0;
 const DEFAULT_VERTICAL_PADDING: u8 = 2;
 const MAX_VERTICAL_PADDING: u8 = 30;
 const DEFAULT_OPACITY: u8 = 100;
+const DEFAULT_ICON_OPACITY: u8 = 100;
 const MIN_OPACITY: u8 = 20;
 const MAX_OPACITY: u8 = 100;
 const ICON_CELL_PADDING: f32 = 14.0;
@@ -761,8 +762,10 @@ struct DockConfig {
     icon_size: f32,
     #[serde(default = "default_vertical_padding")]
     vertical_padding: u8,
-    #[serde(default = "default_opacity")]
-    opacity: u8,
+    #[serde(default = "default_background_opacity", alias = "opacity")]
+    background_opacity: u8,
+    #[serde(default = "default_icon_opacity")]
+    icon_opacity: u8,
     #[serde(default)]
     show_clock: bool,
     #[serde(default)]
@@ -812,7 +815,8 @@ impl Default for DockConfig {
             selected_group: 0,
             icon_size: DEFAULT_ICON_SIZE,
             vertical_padding: DEFAULT_VERTICAL_PADDING,
-            opacity: DEFAULT_OPACITY,
+            background_opacity: DEFAULT_OPACITY,
+            icon_opacity: DEFAULT_ICON_OPACITY,
             show_clock: false,
             show_weather: false,
             show_wifi: false,
@@ -839,8 +843,12 @@ fn default_vertical_padding() -> u8 {
     DEFAULT_VERTICAL_PADDING
 }
 
-fn default_opacity() -> u8 {
+fn default_background_opacity() -> u8 {
     DEFAULT_OPACITY
+}
+
+fn default_icon_opacity() -> u8 {
+    DEFAULT_ICON_OPACITY
 }
 
 fn default_weather_city() -> String {
