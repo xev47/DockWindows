@@ -2039,9 +2039,13 @@ impl DockApp {
         });
         if width_changed || height_changed {
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(width, height)));
+            // Redessine apres que la fenetre native a applique sa nouvelle
+            // taille, pour eviter une image etiree ou rognee.
+            ctx.request_repaint_after(Duration::from_millis(100));
         }
         if position_changed {
             ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(position));
+            ctx.request_repaint_after(Duration::from_millis(100));
         }
         self.last_window_width = Some(width);
         self.last_window_height = Some(height);
