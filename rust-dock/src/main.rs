@@ -1122,6 +1122,7 @@ struct DockApp {
     settings_popup_anchor: Option<egui::Rect>,
     settings_popup_position: Option<egui::Pos2>,
     settings_panel_window_height: Option<f32>,
+    restart_after_settings: bool,
     settings_popup_has_focus: Arc<AtomicBool>,
     settings_popup_dismiss: Arc<AtomicBool>,
     settings_changes_receiver: Receiver<SettingsChanges>,
@@ -1294,6 +1295,7 @@ impl DockApp {
             settings_popup_anchor: None,
             settings_popup_position: None,
             settings_panel_window_height: None,
+            restart_after_settings: false,
             settings_popup_has_focus: Arc::new(AtomicBool::new(false)),
             settings_popup_dismiss: Arc::new(AtomicBool::new(false)),
             settings_changes_receiver,
@@ -1695,11 +1697,13 @@ impl DockApp {
     /// dessine le dock les reutilise ensuite pour l'enregistrement.
     fn apply_live_settings(&mut self) {
         let mut changed = false;
+        let mut size_changed = false;
         if let Some(icon_size) = self.pending_settings.icon_size {
             let icon_size = icon_size.clamp(MIN_ICON_SIZE, MAX_ICON_SIZE);
             if self.config.icon_size != icon_size {
                 self.config.icon_size = icon_size;
                 changed = true;
+                size_changed = true;
             }
         }
         if let Some(vertical_padding) = self.pending_settings.vertical_padding {
@@ -1708,6 +1712,7 @@ impl DockApp {
             if self.config.vertical_padding != vertical_padding {
                 self.config.vertical_padding = vertical_padding;
                 changed = true;
+                size_changed = true;
             }
         }
         if let Some(background_opacity) = self.pending_settings.background_opacity {
@@ -1786,6 +1791,11 @@ impl DockApp {
         }
         if changed {
             self.settings_dirty = true;
+        }
+        if size_changed && self.settings_popup_anchor.is_some() {
+            // La fenetre native a change de taille pendant l'edition : on la
+            // recree a la fermeture du panneau pour garantir un rendu propre.
+            self.restart_after_settings = true;
         }
     }
 
@@ -3138,6 +3148,7 @@ impl DockApp {
                 },
             );
         }
+        let panel_was_open = self.settings_popup_anchor.is_some();
         if settings_popup_anchor != self.settings_popup_anchor {
             if settings_popup_anchor.is_none() {
                 ctx.send_viewport_cmd_to(settings_viewport_id, egui::ViewportCommand::Close);
@@ -3146,6 +3157,18 @@ impl DockApp {
             }
             self.settings_popup_anchor = settings_popup_anchor;
             ctx.request_repaint();
+            if panel_was_open && settings_popup_anchor.is_none() && self.restart_after_settings {
+                self.restart_after_settings = false;
+                let _ = self.persist();
+                if let Ok(executable) = std::env::current_exe() {
+                    match Command::new(executable).spawn() {
+                        Ok(_) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+                        Err(error) => {
+                            show_error(&format!("Unable to restart Dock Windows: {error}"))
+                        }
+                    }
+                }
+            }
         }
         if self.context_menu_open != context_menu_open {
             ctx.request_repaint();

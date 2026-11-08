@@ -1,6 +1,6 @@
 [package]
 name = "dock-windows"
-version = "1.32.8"
+version = "1.32.9"
 edition = "2021"
 
 [dependencies]
