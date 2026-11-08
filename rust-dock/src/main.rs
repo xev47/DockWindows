@@ -1117,6 +1117,7 @@ struct DockApp {
     last_dock_position: DockPosition,
     context_menu_open: bool,
     settings_popup_anchor: Option<egui::Rect>,
+    settings_popup_position: Option<egui::Pos2>,
     settings_popup_has_focus: Arc<AtomicBool>,
     settings_popup_dismiss: Arc<AtomicBool>,
     settings_changes_receiver: Receiver<SettingsChanges>,
@@ -1287,6 +1288,7 @@ impl DockApp {
             last_dock_position: initial_position,
             context_menu_open: false,
             settings_popup_anchor: None,
+            settings_popup_position: None,
             settings_popup_has_focus: Arc::new(AtomicBool::new(false)),
             settings_popup_dismiss: Arc::new(AtomicBool::new(false)),
             settings_changes_receiver,
@@ -2973,6 +2975,7 @@ impl DockApp {
             self.settings_popup_has_focus
                 .store(false, Ordering::Relaxed);
             self.settings_popup_dismiss.store(false, Ordering::Relaxed);
+            self.settings_popup_position = None;
         }
         let settings_viewport_id = egui::ViewportId::from_hash_of("settings-popup");
         let settings_popup_anchor = if settings_changes.dismiss_settings_popup {
@@ -3005,11 +3008,17 @@ impl DockApp {
                     .outer_rect
                     .map_or(egui::Pos2::ZERO, |rect| rect.min)
             });
-            let position = popup_position_for_anchor(
-                anchor.translate(parent_origin.to_vec2()),
-                popup_size,
-                safe_rect,
-            );
+            let position = if let Some(position) = self.settings_popup_position {
+                position
+            } else {
+                let position = popup_position_for_anchor(
+                    anchor.translate(parent_origin.to_vec2()),
+                    popup_size,
+                    safe_rect,
+                );
+                self.settings_popup_position = Some(position);
+                position
+            };
             let viewport_id = settings_viewport_id;
             let popup_settings = SettingsState {
                 icon_size: settings.icon_size,
@@ -3122,6 +3131,7 @@ impl DockApp {
         if settings_popup_anchor != self.settings_popup_anchor {
             if settings_popup_anchor.is_none() {
                 ctx.send_viewport_cmd_to(settings_viewport_id, egui::ViewportCommand::Close);
+                self.settings_popup_position = None;
             }
             self.settings_popup_anchor = settings_popup_anchor;
             ctx.request_repaint();
