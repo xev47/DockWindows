@@ -33,7 +33,7 @@ const APP_NAME: &str = "Dock Windows";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const DEFAULT_ICON_SIZE: f32 = 38.0;
 const MIN_ICON_SIZE: f32 = 24.0;
-const MAX_ICON_SIZE: f32 = 64.0;
+const MAX_ICON_SIZE: f32 = 48.0;
 const DEFAULT_VERTICAL_PADDING: u8 = 2;
 const MAX_VERTICAL_PADDING: u8 = 30;
 const DEFAULT_OPACITY: u8 = 100;
@@ -1110,7 +1110,7 @@ struct DockApp {
     last_window_height: Option<f32>,
     last_window_position: Option<egui::Pos2>,
     dock_layout: DockLayout,
-    dock_frame_height: Option<f32>,
+    dock_content_height: Option<f32>,
     dragging_item: Option<DragItem>,
     group_drop_rects: Vec<Option<egui::Rect>>,
     last_viewport_resizable: Option<bool>,
@@ -1280,7 +1280,7 @@ impl DockApp {
             last_window_height: None,
             last_window_position: None,
             dock_layout: DockLayout::default(),
-            dock_frame_height: None,
+            dock_content_height: None,
             dragging_item: None,
             group_drop_rects: Vec::new(),
             last_viewport_resizable: Some(false),
@@ -1778,6 +1778,7 @@ impl DockApp {
         }
         if changed {
             self.settings_dirty = true;
+            self.dock_content_height = None;
         }
     }
 
@@ -1876,7 +1877,7 @@ impl DockApp {
                 max_wrapped_item_width,
             )
         };
-        let desired_height = if vertical {
+        let mut desired_height = if vertical {
             dock_window_height_with_system_controls(
                 shortcuts,
                 self.visible_running_app_count(),
@@ -1915,11 +1916,18 @@ impl DockApp {
             area_height: desired_height,
             wrap: !vertical && required_width > layout_width + 1.0,
         };
-        // Garde-fou : si le cadre reellement dessine depasse la hauteur prevue, la
-        // fenetre s'agrandit au lieu de rogner le haut du dock.
-        let desired_height = self.dock_frame_height.map_or(desired_height, |measured| {
-            desired_height.max(measured.min(max_height))
-        });
+        // Garde-fou : si le contenu dessine depasse la hauteur prevue, la
+        // fenetre s'agrandit au lieu de rogner le haut du dock. On ne conserve
+        // que le cas « trop grand », pour que reduire la taille des icones ou
+        // l'espacement puisse de nouveau diminuer la fenetre.
+        if let Some(content_height) = self.dock_content_height {
+            let required_height = content_height
+                + 2.0 * f32::from(self.config.vertical_padding)
+                + 2.0 * DOCK_FRAME_STROKE_WIDTH;
+            if required_height > desired_height {
+                desired_height = required_height.min(max_height);
+            }
+        }
         let preview_available_width = if vertical {
             (available_dock_width(ctx) - desired_width - POPUP_GAP).max(1.0)
         } else {
@@ -2200,7 +2208,7 @@ impl DockApp {
         let mut settings_changes = std::mem::take(&mut self.pending_settings);
         let mut context_menu_open = false;
 
-        egui::ScrollArea::vertical()
+        let scroll_output = egui::ScrollArea::vertical()
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
             .scroll_offset(egui::Vec2::ZERO)
             .min_scrolled_width(0.0)
@@ -2760,6 +2768,7 @@ impl DockApp {
                     },
                 );
             });
+        self.dock_content_height = Some(scroll_output.content_size.y);
 
         let _ = background_response.context_menu(|ui| {
             show_scrollable_menu(ui, "background-context-menu", |ui| {
@@ -3356,6 +3365,7 @@ impl DockApp {
 
         changed |= std::mem::take(&mut self.settings_dirty);
         if changed {
+            self.dock_content_height = None;
             self.settings_persist_pending = true;
         }
         if self.settings_persist_pending
@@ -3455,7 +3465,7 @@ impl eframe::App for DockApp {
                     .show(ctx, |ui| {
                         ui.set_width(area_width);
                         ui.set_min_height(area_height);
-                        let dock_frame = egui::Frame::new()
+                        egui::Frame::new()
                             .fill(dock_background_color_with_opacity(
                                 self.config.background_color,
                                 self.config.background_opacity,
@@ -3483,7 +3493,6 @@ impl eframe::App for DockApp {
                                     wrap_horizontal_layout,
                                 );
                             });
-                        self.dock_frame_height = Some(dock_frame.response.rect.height());
                     });
             });
         show_shutdown_confirmation(
@@ -5034,28 +5043,34 @@ fn settings_controls(
         settings_section_label(ui, tr(language, "settings_section_appearance"));
         ui.label(tr(language, "icon_size"));
         let mut icon_size = settings.icon_size;
-        if ui
-            .add(
-                egui::Slider::new(&mut icon_size, MIN_ICON_SIZE..=MAX_ICON_SIZE)
-                    .step_by(1.0)
-                    .show_value(false),
-            )
-            .changed()
-        {
-            changes.icon_size = Some(icon_size);
-        }
+        ui.horizontal(|ui| {
+            if ui
+                .add(
+                    egui::Slider::new(&mut icon_size, MIN_ICON_SIZE..=MAX_ICON_SIZE)
+                        .step_by(1.0)
+                        .show_value(false),
+                )
+                .changed()
+            {
+                changes.icon_size = Some(icon_size);
+            }
+            ui.label(format!("{:.0} px", icon_size));
+        });
         ui.label(tr(language, "vertical_spacing"));
         let mut vertical_padding = settings.vertical_padding;
-        if ui
-            .add(
-                egui::Slider::new(&mut vertical_padding, 0..=MAX_VERTICAL_PADDING)
-                    .step_by(1.0)
-                    .show_value(false),
-            )
-            .changed()
-        {
-            changes.vertical_padding = Some(vertical_padding);
-        }
+        ui.horizontal(|ui| {
+            if ui
+                .add(
+                    egui::Slider::new(&mut vertical_padding, 0..=MAX_VERTICAL_PADDING)
+                        .step_by(1.0)
+                        .show_value(false),
+                )
+                .changed()
+            {
+                changes.vertical_padding = Some(vertical_padding);
+            }
+            ui.label(format!("{vertical_padding} px"));
+        });
         ui.label(tr(language, "background_opacity"));
         let mut background_opacity = settings.background_opacity;
         ui.horizontal(|ui| {
