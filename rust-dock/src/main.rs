@@ -1791,6 +1791,7 @@ impl DockApp {
         let dock_position_changed = self.last_dock_position != self.config.dock_position;
         let work_area = monitor_work_area(ctx);
         let settings_popup_open = self.context_menu_open
+            || self.settings_popup_anchor.is_some()
             || ctx.memory(|memory| memory.any_popup_open())
             || ctx.input(|input| input.pointer.secondary_down());
         let confirmation_open = self.shutdown_confirmation_open;
