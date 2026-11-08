@@ -3,21 +3,21 @@
 Chaque version publiée de l'application est déposée ici sous la forme d'un
 paquet MSI x64 installable par utilisateur, accompagné de son empreinte SHA-256.
 
-## Version courante : 1.32.10
+## Version courante : 1.32.11
 
-- [DockWindows-1.32.10-x64.msi](https://github.com/xev47/DockWindows/raw/Version-1.32.10/releases/DockWindows-1.32.10-x64.msi) — installateur Windows 10/11 x64.
-- [DockWindows-1.32.10-x64.msi.sha256](https://github.com/xev47/DockWindows/raw/Version-1.32.10/releases/DockWindows-1.32.10-x64.msi.sha256) — empreinte de vérification.
+- [DockWindows-1.32.11-x64.msi](https://github.com/xev47/DockWindows/raw/Version-1.32.11/releases/DockWindows-1.32.11-x64.msi) — installateur Windows 10/11 x64.
+- [DockWindows-1.32.11-x64.msi.sha256](https://github.com/xev47/DockWindows/raw/Version-1.32.11/releases/DockWindows-1.32.11-x64.msi.sha256) — empreinte de vérification.
 
 Vérifier le fichier téléchargé :
 
 ```powershell
-Get-FileHash .\DockWindows-1.32.10-x64.msi -Algorithm SHA256
+Get-FileHash .\DockWindows-1.32.11-x64.msi -Algorithm SHA256
 ```
 
 Installer en double-cliquant le MSI, ou en silence :
 
 ```powershell
-msiexec /i .\DockWindows-1.32.10-x64.msi /qn
+msiexec /i .\DockWindows-1.32.11-x64.msi /qn
 ```
 
 La configuration personnelle (`%APPDATA%\DockWindows`) est conservée lors d'une

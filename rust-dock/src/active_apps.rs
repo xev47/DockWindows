@@ -15,6 +15,29 @@ impl ActiveApplication {
     }
 }
 
+/// Fenetres internes du shell Windows (bureau, barre des taches) : ce ne sont
+/// pas des applications et elles ne doivent pas apparaitre dans le dock.
+fn is_shell_window_class(class: &str) -> bool {
+    matches!(
+        class,
+        "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd" | "TaskListThumbnailWnd"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_shell_window_class;
+
+    #[test]
+    fn shell_desktop_and_taskbar_windows_are_ignored() {
+        assert!(is_shell_window_class("Progman"));
+        assert!(is_shell_window_class("WorkerW"));
+        assert!(is_shell_window_class("Shell_TrayWnd"));
+        assert!(!is_shell_window_class("CabinetWClass"));
+        assert!(!is_shell_window_class("Chrome_WidgetWin_1"));
+    }
+}
+
 #[cfg(windows)]
 mod windows {
     use std::ffi::c_void;
@@ -35,12 +58,12 @@ mod windows {
     };
     use windows_sys::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        DestroyIcon, DrawIconEx, EnumWindows, GetWindow, GetWindowTextLengthW, GetWindowTextW,
-        GetWindowThreadProcessId, IsIconic, IsWindowVisible, PostMessageW, SetForegroundWindow,
-        ShowWindow, DI_NORMAL, GW_OWNER, SW_RESTORE, WM_CLOSE,
+        DestroyIcon, DrawIconEx, EnumWindows, GetClassNameW, GetWindow, GetWindowTextLengthW,
+        GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, PostMessageW,
+        SetForegroundWindow, ShowWindow, DI_NORMAL, GW_OWNER, SW_RESTORE, WM_CLOSE,
     };
 
-    use super::ActiveApplication;
+    use super::{is_shell_window_class, ActiveApplication};
 
     const ICON_SIZE: i32 = 48;
     const ICON_BYTES: usize = ICON_SIZE as usize * ICON_SIZE as usize * 4;
@@ -123,6 +146,16 @@ mod windows {
         let Some(path) = process_path(process_id) else {
             return 1;
         };
+
+        let mut class_buffer = [0u16; 256];
+        let class_len = GetClassNameW(hwnd, class_buffer.as_mut_ptr(), class_buffer.len() as i32);
+        if class_len > 0
+            && is_shell_window_class(&String::from_utf16_lossy(
+                &class_buffer[..class_len as usize],
+            ))
+        {
+            return 1;
+        }
 
         let title = String::from_utf16_lossy(&title_buffer[..title_len as usize]);
         state.apps.push(ActiveApplication {

@@ -8,7 +8,7 @@
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
-[![Download Dock Windows 1.32.10](https://img.shields.io/badge/download-DockWindows--1.32.10--x64.msi-2ea44f?logo=windows&logoColor=white)](https://github.com/xev47/DockWindows/raw/Version-1.32.10/releases/DockWindows-1.32.10-x64.msi)
+[![Download Dock Windows 1.32.11](https://img.shields.io/badge/download-DockWindows--1.32.11--x64.msi-2ea44f?logo=windows&logoColor=white)](https://github.com/xev47/DockWindows/raw/Version-1.32.11/releases/DockWindows-1.32.11-x64.msi)
 
 **English** · [Français](README.fr.md)
 
@@ -87,7 +87,7 @@ Start menu and on the desktop, then launches the dock at the end of the
 installation. The latest installer is published in [`releases/`](releases/) with
 its SHA-256 checksum.
 
-**[Download DockWindows-1.32.10-x64.msi](https://github.com/xev47/DockWindows/raw/Version-1.32.10/releases/DockWindows-1.32.10-x64.msi)** · [SHA-256 checksum](https://github.com/xev47/DockWindows/raw/Version-1.32.10/releases/DockWindows-1.32.10-x64.msi.sha256)
+**[Download DockWindows-1.32.11-x64.msi](https://github.com/xev47/DockWindows/raw/Version-1.32.11/releases/DockWindows-1.32.11-x64.msi)** · [SHA-256 checksum](https://github.com/xev47/DockWindows/raw/Version-1.32.11/releases/DockWindows-1.32.11-x64.msi.sha256)
 
 On first start, an assistant lets you choose the dock language (French, English
 or Spanish) and import Windows shortcuts: taskbar, desktop and Start menu.
