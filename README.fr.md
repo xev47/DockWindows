@@ -51,7 +51,8 @@ Le dock Rust, situé dans `rust-dock/`, est un programme autonome.
 
 - Masquer une application en cours d'exécution du dock et la réafficher depuis
   le menu contextuel.
-- Régler la taille des icônes, l'espace vertical et l'opacité du dock.
+- Régler la taille des icônes, l'espace vertical, l'opacité du fond et celle des
+  icônes ; les changements s'affichent en direct dans le dock.
 - Activer le démarrage automatique, l'affichage permanent au premier plan,
   l'heure locale, la météo et le bouton d'arrêt avec confirmation.
 - Afficher un accès aux réseaux Wi-Fi Windows et régler le volume système
@@ -66,7 +67,8 @@ Le dock Rust, situé dans `rust-dock/`, est un programme autonome.
 
 Pour ouvrir les paramètres, faites un clic droit sur une icône, le bouton
 d'arrêt, l'heure ou la météo ; le panneau affiche le nom de l'application et
-sa version, et permet de quitter le dock depuis le lien « Quitter ».
+sa version. La commande « Quitter » est disponible dans tous les menus
+contextuels du dock.
 L'affichage de l'heure et de la météo ainsi que le
 bouton d'arrêt sont désactivés par défaut. La météo nécessite une connexion
 Internet. L'accès Wi-Fi et le contrôle du son sont également désactivés par

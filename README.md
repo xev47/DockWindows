@@ -47,7 +47,8 @@ The Rust dock lives in `rust-dock/` and is a self-contained program.
 - Manage shortcuts with the context menu.
 - Hide a running application from the dock and show it again from the context
   menu.
-- Adjust the icon size, vertical spacing and dock opacity.
+- Adjust the icon size, vertical spacing, background opacity and icon opacity;
+  changes are previewed live in the dock.
 - Enable automatic startup, always-on-top, the local time, the weather and the
   shutdown button with confirmation.
 - Show an entry point to Windows Wi-Fi networks and adjust the system volume from
@@ -61,10 +62,11 @@ The Rust dock lives in `rust-dock/` and is a self-contained program.
 - Automatically fit and recenter the dock to its content.
 
 To open the settings, right-click an icon, the shutdown button, the clock or the
-weather; the panel shows the application name and version, and lets you quit the
-dock from the "Quit" link. The clock, weather and shutdown button are disabled by
-default. The weather requires an Internet connection. Wi-Fi access and sound
-control are also disabled by default; Wi-Fi opens the Windows network picker. The
+weather; the panel shows the application name and version. The "Quit" command is
+available from every dock context menu. The clock, weather and shutdown button
+are disabled by default. The weather requires an Internet connection. Wi-Fi
+access and sound control are also disabled by default; Wi-Fi opens the Windows
+network picker. The
 search field, also disabled by default, indexes shortcuts from the user and
 Windows Start menus.
 

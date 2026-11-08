@@ -803,12 +803,11 @@ dependencies = [
 
 [[package]]
 name = "dock-windows"
-version = "1.31.1"
+version = "1.32.0"
 dependencies = [
  "chrono",
  "eframe",
  "open",
- "raw-window-handle",
  "rfd",
  "serde",
  "serde_json",

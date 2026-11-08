@@ -490,8 +490,8 @@ fn tr(language: AppLanguage, key: &str) -> &str {
         "show_all_applications" => "Tout réafficher",
         "icon_size" => "Taille des icônes",
         "vertical_spacing" => "Espace vertical autour des icônes",
-        "opacity" => "Opacité de l'application",
-        "opacity_error" => "Impossible de régler l'opacité de la fenêtre",
+        "background_opacity" => "Opacité du fond",
+        "icon_opacity" => "Opacité des icônes",
         "show_clock" => "Afficher l'heure",
         "show_weather" => "Afficher la météo",
         "show_shutdown_button" => "Afficher le bouton d'arrêt",
@@ -599,8 +599,8 @@ fn tr(language: AppLanguage, key: &str) -> &str {
             "show_all_applications" => "Show all",
             "icon_size" => "Icon size",
             "vertical_spacing" => "Vertical spacing around icons",
-            "opacity" => "Application opacity",
-            "opacity_error" => "Unable to set window opacity",
+            "background_opacity" => "Background opacity",
+            "icon_opacity" => "Icon opacity",
             "show_clock" => "Show clock",
             "show_weather" => "Show weather",
             "show_shutdown_button" => "Show shutdown button",
@@ -706,8 +706,8 @@ fn tr(language: AppLanguage, key: &str) -> &str {
             "show_all_applications" => "Mostrar todo",
             "icon_size" => "Tamaño de los iconos",
             "vertical_spacing" => "Espacio vertical alrededor de los iconos",
-            "opacity" => "Opacidad de la aplicación",
-            "opacity_error" => "No se puede ajustar la opacidad de la ventana",
+            "background_opacity" => "Opacidad del fondo",
+            "icon_opacity" => "Opacidad de los iconos",
             "show_clock" => "Mostrar la hora",
             "show_weather" => "Mostrar el tiempo",
             "show_shutdown_button" => "Mostrar el botón de apagado",
@@ -888,7 +888,8 @@ impl DockConfig {
             self.icon_size = self.icon_size.clamp(MIN_ICON_SIZE, MAX_ICON_SIZE);
         }
         self.vertical_padding = self.vertical_padding.min(MAX_VERTICAL_PADDING);
-        self.opacity = self.opacity.clamp(MIN_OPACITY, MAX_OPACITY);
+        self.background_opacity = self.background_opacity.clamp(MIN_OPACITY, MAX_OPACITY);
+        self.icon_opacity = self.icon_opacity.clamp(MIN_OPACITY, MAX_OPACITY);
         self.hidden_apps = self
             .hidden_apps
             .drain(..)
@@ -1120,6 +1121,10 @@ struct DockApp {
     settings_popup_dismiss: Arc<AtomicBool>,
     settings_changes_receiver: Receiver<SettingsChanges>,
     settings_changes_sender: Sender<SettingsChanges>,
+    pending_settings: SettingsChanges,
+    settings_dirty: bool,
+    settings_persist_pending: bool,
+    last_settings_persist: Option<Instant>,
     fallback_context_menu_position: Option<egui::Pos2>,
     window_preview: Option<WindowPreviewGroup>,
     startup_enabled: bool,
@@ -1132,7 +1137,6 @@ struct DockApp {
     weather_city_draft: String,
     last_weather_request: Option<Instant>,
     shutdown_confirmation_open: bool,
-    last_applied_opacity: Option<u8>,
     system_volume: Option<f32>,
     system_volume_error: Option<String>,
     last_volume_refresh: Option<Instant>,
@@ -1287,6 +1291,10 @@ impl DockApp {
             settings_popup_dismiss: Arc::new(AtomicBool::new(false)),
             settings_changes_receiver,
             settings_changes_sender,
+            pending_settings: SettingsChanges::default(),
+            settings_dirty: false,
+            settings_persist_pending: false,
+            last_settings_persist: None,
             fallback_context_menu_position: None,
             window_preview: None,
             startup_enabled,
@@ -1299,7 +1307,6 @@ impl DockApp {
             weather_city_draft,
             last_weather_request: None,
             shutdown_confirmation_open: false,
-            last_applied_opacity: None,
             system_volume: None,
             system_volume_error: None,
             last_volume_refresh: None,
@@ -1533,7 +1540,6 @@ impl DockApp {
                 let _ = write_config(&self.config_path, &self.config);
                 self.config = imported;
                 self.weather_city_draft = self.config.weather_city.clone();
-                self.last_applied_opacity = None;
                 let window_level = if self.config.always_on_top {
                     egui::WindowLevel::AlwaysOnTop
                 } else {
@@ -1674,6 +1680,104 @@ impl DockApp {
                 "{}: {error}",
                 tr(language, "weather_request_error")
             ));
+        }
+    }
+
+    /// Applique tout de suite les reglages qui influencent la taille ou le
+    /// rendu du dock, avant le calcul de la fenetre. Le tour de boucle qui
+    /// dessine le dock les reutilise ensuite pour l'enregistrement.
+    fn apply_live_settings(&mut self) {
+        let mut changed = false;
+        if let Some(icon_size) = self.pending_settings.icon_size {
+            let icon_size = icon_size.clamp(MIN_ICON_SIZE, MAX_ICON_SIZE);
+            if self.config.icon_size != icon_size {
+                self.config.icon_size = icon_size;
+                changed = true;
+            }
+        }
+        if let Some(vertical_padding) = self.pending_settings.vertical_padding {
+            let vertical_padding = vertical_padding.min(MAX_VERTICAL_PADDING);
+            if self.config.vertical_padding != vertical_padding {
+                self.config.vertical_padding = vertical_padding;
+                changed = true;
+            }
+        }
+        if let Some(background_opacity) = self.pending_settings.background_opacity {
+            let background_opacity = background_opacity.clamp(MIN_OPACITY, MAX_OPACITY);
+            if self.config.background_opacity != background_opacity {
+                self.config.background_opacity = background_opacity;
+                changed = true;
+            }
+        }
+        if let Some(icon_opacity) = self.pending_settings.icon_opacity {
+            let icon_opacity = icon_opacity.clamp(MIN_OPACITY, MAX_OPACITY);
+            if self.config.icon_opacity != icon_opacity {
+                self.config.icon_opacity = icon_opacity;
+                changed = true;
+            }
+        }
+        for (value, target) in [
+            (
+                self.pending_settings.show_clock,
+                &mut self.config.show_clock,
+            ),
+            (
+                self.pending_settings.show_weather,
+                &mut self.config.show_weather,
+            ),
+            (self.pending_settings.show_wifi, &mut self.config.show_wifi),
+            (
+                self.pending_settings.show_volume,
+                &mut self.config.show_volume,
+            ),
+            (
+                self.pending_settings.show_shutdown_button,
+                &mut self.config.show_shutdown_button,
+            ),
+            (
+                self.pending_settings.show_search,
+                &mut self.config.show_search,
+            ),
+        ] {
+            if let Some(value) = value {
+                if *target != value {
+                    *target = value;
+                    changed = true;
+                }
+            }
+        }
+        if let Some(shutdown_side) = self.pending_settings.shutdown_side {
+            if self.config.shutdown_side != shutdown_side {
+                self.config.shutdown_side = shutdown_side;
+                changed = true;
+            }
+        }
+        if let Some(weather_side) = self.pending_settings.weather_side {
+            if self.config.weather_side != weather_side {
+                self.config.weather_side = weather_side;
+                changed = true;
+            }
+        }
+        if let Some(dock_position) = self.pending_settings.dock_position {
+            if self.config.dock_position != dock_position {
+                self.config.dock_position = dock_position;
+                changed = true;
+            }
+        }
+        if let Some(background_color) = self.pending_settings.background_color {
+            if self.config.background_color != background_color {
+                self.config.background_color = background_color;
+                changed = true;
+            }
+        }
+        if let Some(language) = self.pending_settings.language {
+            if self.config.language != language {
+                self.config.language = language;
+                changed = true;
+            }
+        }
+        if changed {
+            self.settings_dirty = true;
         }
     }
 
@@ -2011,7 +2115,8 @@ impl DockApp {
         let settings = SettingsState {
             icon_size: self.config.icon_size,
             vertical_padding: self.config.vertical_padding,
-            opacity: self.config.opacity,
+            background_opacity: self.config.background_opacity,
+            icon_opacity: self.config.icon_opacity,
             show_clock: self.config.show_clock,
             show_weather: self.config.show_weather,
             show_wifi: self.config.show_wifi,
@@ -2027,6 +2132,7 @@ impl DockApp {
             weather_city: &weather_city,
             language,
         };
+        let icon_opacity = settings.icon_opacity as f32 / 100.0;
         let group_icons: Vec<Vec<Option<TextureHandle>>> = group_shortcuts
             .iter()
             .map(|shortcuts| {
@@ -2091,11 +2197,7 @@ impl DockApp {
         let pointer_released = ui.input(|input| input.pointer.any_released());
         let pointer_position = ui.input(|input| input.pointer.interact_pos());
         let dragging = self.dragging_item.is_some();
-        let mut quit = false;
-        let mut settings_changes = SettingsChanges::default();
-        while let Ok(changes) = self.settings_changes_receiver.try_recv() {
-            settings_changes.merge(changes);
-        }
+        let mut settings_changes = std::mem::take(&mut self.pending_settings);
         let mut context_menu_open = false;
 
         egui::ScrollArea::vertical()
@@ -2148,7 +2250,10 @@ impl DockApp {
                                 ui,
                                 &mut self.search_query,
                                 language,
-                                dock_background_color(settings.background_color),
+                                dock_background_color_with_opacity(
+                                    settings.background_color,
+                                    settings.background_opacity,
+                                ),
                             );
                             search_rect = Some(rect);
                             context_menu_open |= add_settings_context_menu(
@@ -2206,6 +2311,7 @@ impl DockApp {
                                             icon.as_ref(),
                                             settings.icon_size,
                                             egui::Sense::click_and_drag(),
+                                            icon_opacity,
                                         )
                                     })
                                     .inner;
@@ -2370,6 +2476,7 @@ impl DockApp {
                                         icon.as_ref(),
                                         settings.icon_size,
                                         egui::Sense::click_and_drag(),
+                                        icon_opacity,
                                     )
                                 })
                                 .inner
@@ -2608,7 +2715,8 @@ impl DockApp {
                             }
                             let mut add_system_controls = |ui: &mut egui::Ui| {
                                 if settings.show_wifi {
-                                    let response = wifi_control(ui, settings.icon_size);
+                                    let response =
+                                        wifi_control(ui, settings.icon_size, icon_opacity);
                                     if response.clicked() {
                                         open_wifi_networks = true;
                                     }
@@ -2625,6 +2733,7 @@ impl DockApp {
                                         &mut volume,
                                         volume_error.as_deref(),
                                         &mut volume_change,
+                                        icon_opacity,
                                     );
                                     context_menu_open |= add_settings_context_menu(
                                         &response,
@@ -2663,11 +2772,6 @@ impl DockApp {
                     &mut show_all_apps,
                 );
                 settings_menu(ui, settings, &mut settings_changes);
-                menu_separator(ui);
-                if menu_item(ui, MENU_ICON_QUIT, tr(language, "quit")).clicked() {
-                    quit = true;
-                    ui.close_menu();
-                }
             });
         });
         context_menu_open |= background_response.context_menu_opened();
@@ -2688,7 +2792,6 @@ impl DockApp {
         }
         if let Some(global_position) = self.fallback_context_menu_position {
             let position = global_position - viewport_origin(ctx);
-            let mut dismissed_from_menu = false;
             let popup = egui::Area::new(egui::Id::new("fallback-application-context-menu"))
                 .order(egui::Order::Foreground)
                 .fixed_pos(position)
@@ -2707,11 +2810,6 @@ impl DockApp {
                                     &mut show_all_apps,
                                 );
                                 settings_menu(ui, settings, &mut settings_changes);
-                                menu_separator(ui);
-                                if menu_item(ui, MENU_ICON_QUIT, tr(language, "quit")).clicked() {
-                                    quit = true;
-                                    dismissed_from_menu = true;
-                                }
                             });
                         });
                     });
@@ -2725,7 +2823,6 @@ impl DockApp {
                 ctx.input(|input| input.key_pressed(egui::Key::Escape)) || clicked_outside;
             let menu_action = settings_changes.has_changes()
                 || settings_changes.settings_popup_anchor.is_some()
-                || dismissed_from_menu
                 || dismissed;
             if menu_action {
                 self.fallback_context_menu_position = None;
@@ -2791,7 +2888,10 @@ impl DockApp {
                         .show(ctx, |ui| {
                             ui.set_width(popup_size.x);
                             egui::Frame::new()
-                                .fill(dock_background_color(settings.background_color))
+                                .fill(dock_background_color_with_opacity(
+                                    settings.background_color,
+                                    settings.background_opacity,
+                                ))
                                 .corner_radius(egui::CornerRadius::same(12))
                                 .stroke(egui::Stroke::new(1.0, Color32::from_white_alpha(48)))
                                 .inner_margin(egui::Margin::same(6))
@@ -2905,7 +3005,8 @@ impl DockApp {
             let popup_settings = SettingsState {
                 icon_size: settings.icon_size,
                 vertical_padding: settings.vertical_padding,
-                opacity: settings.opacity,
+                background_opacity: settings.background_opacity,
+                icon_opacity: settings.icon_opacity,
                 show_clock: settings.show_clock,
                 show_weather: settings.show_weather,
                 show_wifi: settings.show_wifi,
@@ -3001,6 +3102,10 @@ impl DockApp {
                         if let Err(error) = changes_sender.send(popup_changes) {
                             show_error(&format!("Failed to update settings: {error}"));
                         }
+                        // Recalcule le dock tout de suite : les curseurs de
+                        // taille, d'espacement et d'opacite restent ainsi en
+                        // apercu temps reel.
+                        popup_ctx.request_repaint_of(egui::ViewportId::ROOT);
                     }
                 },
             );
@@ -3084,10 +3189,17 @@ impl DockApp {
                 changed = true;
             }
         }
-        if let Some(opacity) = settings_changes.opacity {
-            let opacity = opacity.clamp(MIN_OPACITY, MAX_OPACITY);
-            if self.config.opacity != opacity {
-                self.config.opacity = opacity;
+        if let Some(background_opacity) = settings_changes.background_opacity {
+            let background_opacity = background_opacity.clamp(MIN_OPACITY, MAX_OPACITY);
+            if self.config.background_opacity != background_opacity {
+                self.config.background_opacity = background_opacity;
+                changed = true;
+            }
+        }
+        if let Some(icon_opacity) = settings_changes.icon_opacity {
+            let icon_opacity = icon_opacity.clamp(MIN_OPACITY, MAX_OPACITY);
+            if self.config.icon_opacity != icon_opacity {
+                self.config.icon_opacity = icon_opacity;
                 changed = true;
             }
         }
@@ -3238,11 +3350,21 @@ impl DockApp {
             self.refresh_active_apps(ctx);
             changed = true;
         }
-        if quit || settings_changes.quit {
+        if settings_changes.quit {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
 
+        changed |= std::mem::take(&mut self.settings_dirty);
         if changed {
+            self.settings_persist_pending = true;
+        }
+        if self.settings_persist_pending
+            && self
+                .last_settings_persist
+                .map_or(true, |last| last.elapsed() >= Duration::from_millis(250))
+        {
+            self.settings_persist_pending = false;
+            self.last_settings_persist = Some(Instant::now());
             let _ = self.persist();
         }
     }
@@ -3261,12 +3383,16 @@ impl eframe::App for DockApp {
         }
     }
 
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.setup.is_some() {
             self.show_setup(ctx);
             ctx.request_repaint_after(Duration::from_millis(100));
             return;
         }
+        while let Ok(changes) = self.settings_changes_receiver.try_recv() {
+            self.pending_settings.merge(changes);
+        }
+        self.apply_live_settings();
         self.refresh_weather();
         if self.config.show_volume
             && self
@@ -3330,9 +3456,18 @@ impl eframe::App for DockApp {
                         ui.set_width(area_width);
                         ui.set_min_height(area_height);
                         let dock_frame = egui::Frame::new()
-                            .fill(dock_background_color(self.config.background_color))
+                            .fill(dock_background_color_with_opacity(
+                                self.config.background_color,
+                                self.config.background_opacity,
+                            ))
                             .corner_radius(egui::CornerRadius::same(28))
-                            .stroke(egui::Stroke::new(1.0, Color32::from_white_alpha(35)))
+                            .stroke(egui::Stroke::new(
+                                1.0,
+                                Color32::from_white_alpha(scaled_alpha(
+                                    35,
+                                    self.config.background_opacity,
+                                )),
+                            ))
                             .inner_margin(egui::Margin {
                                 left: 8,
                                 right: 8,
@@ -3356,16 +3491,6 @@ impl eframe::App for DockApp {
             &mut self.shutdown_confirmation_open,
             self.config.language,
         );
-        if self.last_applied_opacity != Some(self.config.opacity) {
-            self.last_applied_opacity = Some(self.config.opacity);
-            #[cfg(windows)]
-            if let Err(error) = apply_native_window_opacity(frame, self.config.opacity) {
-                show_error(&format!(
-                    "{}: {error}",
-                    tr(self.config.language, "opacity_error")
-                ));
-            }
-        }
     }
 }
 
@@ -4625,63 +4750,8 @@ fn dock_window_height(
     )
 }
 
-fn opacity_to_alpha(opacity: u8) -> u8 {
-    (u16::from(opacity.min(MAX_OPACITY)) * u16::from(u8::MAX) / u16::from(MAX_OPACITY)) as u8
-}
-
-#[cfg(windows)]
-fn apply_native_window_opacity(frame: &eframe::Frame, opacity: u8) -> Result<(), String> {
-    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    use windows_sys::Win32::Foundation::{GetLastError, SetLastError};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
-        GWL_EXSTYLE, LWA_ALPHA, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-        SWP_NOZORDER, WS_EX_LAYERED,
-    };
-
-    let window_handle = frame
-        .window_handle()
-        .map_err(|error| format!("Unable to get the native window handle: {error}"))?;
-    let RawWindowHandle::Win32(window_handle) = window_handle.as_raw() else {
-        return Err("The native window handle is not a Win32 handle.".to_owned());
-    };
-    let hwnd = window_handle.hwnd.get() as _;
-    unsafe {
-        SetLastError(0);
-        let extended_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        let error = GetLastError();
-        if extended_style == 0 && error != 0 {
-            return Err(std::io::Error::from_raw_os_error(error as i32).to_string());
-        }
-
-        if extended_style & WS_EX_LAYERED as isize == 0 {
-            SetLastError(0);
-            let previous_style =
-                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, extended_style | WS_EX_LAYERED as isize);
-            let error = GetLastError();
-            if previous_style == 0 && error != 0 {
-                return Err(std::io::Error::from_raw_os_error(error as i32).to_string());
-            }
-            if SetWindowPos(
-                hwnd,
-                std::ptr::null_mut(),
-                0,
-                0,
-                0,
-                0,
-                SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER,
-            ) == 0
-            {
-                return Err(std::io::Error::last_os_error().to_string());
-            }
-        }
-    }
-    let alpha = opacity_to_alpha(opacity);
-    let result = unsafe { SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA) };
-    if result == 0 {
-        return Err(std::io::Error::last_os_error().to_string());
-    }
-    Ok(())
+fn scaled_alpha(alpha: u8, opacity: u8) -> u8 {
+    (u16::from(alpha) * u16::from(opacity.min(MAX_OPACITY)) / u16::from(MAX_OPACITY)) as u8
 }
 
 #[cfg(test)]
@@ -4788,7 +4858,8 @@ fn hidden_apps_menu(
 struct SettingsState<'a> {
     icon_size: f32,
     vertical_padding: u8,
-    opacity: u8,
+    background_opacity: u8,
+    icon_opacity: u8,
     show_clock: bool,
     show_weather: bool,
     show_wifi: bool,
@@ -4809,7 +4880,8 @@ struct SettingsState<'a> {
 struct SettingsChanges {
     icon_size: Option<f32>,
     vertical_padding: Option<u8>,
-    opacity: Option<u8>,
+    background_opacity: Option<u8>,
+    icon_opacity: Option<u8>,
     show_clock: Option<bool>,
     show_weather: Option<bool>,
     show_wifi: Option<bool>,
@@ -4839,7 +4911,8 @@ impl SettingsChanges {
     fn merge(&mut self, incoming: Self) {
         self.icon_size = incoming.icon_size.or(self.icon_size);
         self.vertical_padding = incoming.vertical_padding.or(self.vertical_padding);
-        self.opacity = incoming.opacity.or(self.opacity);
+        self.background_opacity = incoming.background_opacity.or(self.background_opacity);
+        self.icon_opacity = incoming.icon_opacity.or(self.icon_opacity);
         self.show_clock = incoming.show_clock.or(self.show_clock);
         self.show_weather = incoming.show_weather.or(self.show_weather);
         self.show_wifi = incoming.show_wifi.or(self.show_wifi);
@@ -4872,7 +4945,8 @@ impl SettingsChanges {
     fn has_changes(&self) -> bool {
         self.icon_size.is_some()
             || self.vertical_padding.is_some()
-            || self.opacity.is_some()
+            || self.background_opacity.is_some()
+            || self.icon_opacity.is_some()
             || self.show_clock.is_some()
             || self.show_weather.is_some()
             || self.show_wifi.is_some()
@@ -4916,6 +4990,11 @@ fn settings_menu(
     let response = menu_item(ui, MENU_ICON_SETTINGS, tr(settings.language, "settings"));
     if response.clicked() {
         changes.settings_popup_anchor = Some(response.rect);
+        ui.close_menu();
+    }
+    menu_separator(ui);
+    if menu_item(ui, MENU_ICON_QUIT, tr(settings.language, "quit")).clicked() {
+        changes.quit = true;
         ui.close_menu();
     }
     response.clicked()
@@ -4977,20 +5056,35 @@ fn settings_controls(
         {
             changes.vertical_padding = Some(vertical_padding);
         }
-        ui.label(tr(language, "opacity"));
-        let mut opacity = settings.opacity;
+        ui.label(tr(language, "background_opacity"));
+        let mut background_opacity = settings.background_opacity;
         ui.horizontal(|ui| {
             if ui
                 .add(
-                    egui::Slider::new(&mut opacity, MIN_OPACITY..=MAX_OPACITY)
+                    egui::Slider::new(&mut background_opacity, MIN_OPACITY..=MAX_OPACITY)
                         .step_by(1.0)
                         .show_value(false),
                 )
                 .changed()
             {
-                changes.opacity = Some(opacity);
+                changes.background_opacity = Some(background_opacity);
             }
-            ui.label(format!("{opacity}%"));
+            ui.label(format!("{background_opacity}%"));
+        });
+        ui.label(tr(language, "icon_opacity"));
+        let mut icon_opacity = settings.icon_opacity;
+        ui.horizontal(|ui| {
+            if ui
+                .add(
+                    egui::Slider::new(&mut icon_opacity, MIN_OPACITY..=MAX_OPACITY)
+                        .step_by(1.0)
+                        .show_value(false),
+                )
+                .changed()
+            {
+                changes.icon_opacity = Some(icon_opacity);
+            }
+            ui.label(format!("{icon_opacity}%"));
         });
         settings_section_label(ui, tr(language, "settings_section_content"));
         let mut show_clock = settings.show_clock;
@@ -5129,10 +5223,6 @@ fn settings_controls(
                 changes.import_config = true;
             }
         });
-        ui.add_space(8.0);
-        if ui.link(tr(language, "quit")).clicked() {
-            changes.quit = true;
-        }
     });
 }
 
@@ -5317,8 +5407,8 @@ fn show_power_control(
     settings: SettingsState<'_>,
     changes: &mut SettingsChanges,
 ) -> (bool, bool) {
-    let response =
-        power_button(ui, settings.icon_size).on_hover_text(tr(settings.language, "power_off"));
+    let response = power_button(ui, settings.icon_size, settings.icon_opacity as f32 / 100.0)
+        .on_hover_text(tr(settings.language, "power_off"));
     let menu_open = add_settings_context_menu(&response, settings, changes);
     (response.clicked(), menu_open)
 }
@@ -5339,17 +5429,21 @@ fn show_information_controls(
     if include_weather && settings.show_weather {
         if let Some(weather) = current_weather {
             let symbol = ui
-                .add(
-                    egui::Label::new(
-                        egui::RichText::new(if weather.is_day {
-                            weather_symbol(weather.weather_code)
-                        } else {
-                            moon_phase_symbol(chrono::Utc::now().timestamp())
-                        })
-                        .size(22.0),
+                .scope(|ui| {
+                    ui.multiply_opacity(settings.icon_opacity as f32 / 100.0);
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(if weather.is_day {
+                                weather_symbol(weather.weather_code)
+                            } else {
+                                moon_phase_symbol(chrono::Utc::now().timestamp())
+                            })
+                            .size(22.0),
+                        )
+                        .sense(egui::Sense::click()),
                     )
-                    .sense(egui::Sense::click()),
-                )
+                })
+                .inner
                 .on_hover_text(format!(
                     "{} — {} {}",
                     weather_description(weather.weather_code, language),
@@ -5368,7 +5462,12 @@ fn show_information_controls(
             let temperature = temperature.on_hover_text(tooltip);
             context_menu_open |= add_settings_context_menu(&temperature, settings, changes);
         } else {
-            let pending = ui.add(egui::Label::new("…").sense(egui::Sense::click()));
+            let pending = ui
+                .scope(|ui| {
+                    ui.multiply_opacity(settings.icon_opacity as f32 / 100.0);
+                    ui.add(egui::Label::new("…").sense(egui::Sense::click()))
+                })
+                .inner;
             let pending = if let Some(error) = weather_error {
                 pending.on_hover_text(error)
             } else {
@@ -5478,6 +5577,7 @@ fn icon_button(
     icon: Option<&TextureHandle>,
     base_size: f32,
     sense: egui::Sense,
+    opacity: f32,
 ) -> egui::Response {
     let cell_size = base_size + ICON_CELL_PADDING;
     let (cell, response) = ui.allocate_exact_size(egui::vec2(cell_size, cell_size), sense);
@@ -5488,28 +5588,30 @@ fn icon_button(
     );
     let icon_size = base_size + 8.0 * hover;
     let icon_rect = egui::Rect::from_center_size(cell.center(), egui::vec2(icon_size, icon_size));
+    let mut painter = ui.painter().clone();
+    painter.set_opacity(opacity);
 
     if let Some(icon) = icon {
-        ui.painter().image(
+        painter.image(
             icon.id(),
             icon_rect,
             egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
             Color32::WHITE,
         );
     } else {
-        ui.painter().rect_filled(
+        painter.rect_filled(
             icon_rect,
             egui::CornerRadius::same(10),
             Color32::from_rgb(52, 57, 68),
         );
         let center = icon_rect.center();
-        ui.painter().rect_stroke(
+        painter.rect_stroke(
             egui::Rect::from_center_size(center, egui::vec2(icon_size * 0.52, icon_size * 0.42)),
             egui::CornerRadius::same(3),
             egui::Stroke::new(1.5, Color32::from_white_alpha(210)),
             egui::StrokeKind::Inside,
         );
-        ui.painter().circle_filled(
+        painter.circle_filled(
             center + egui::vec2(icon_size * 0.24, -icon_size * 0.16),
             1.5,
             Color32::from_white_alpha(210),
@@ -5634,7 +5736,11 @@ fn dock_background_color([red, green, blue, alpha]: [u8; 4]) -> Color32 {
     Color32::from_rgba_unmultiplied(red, green, blue, alpha)
 }
 
-fn power_button(ui: &mut egui::Ui, base_size: f32) -> egui::Response {
+fn dock_background_color_with_opacity([red, green, blue, alpha]: [u8; 4], opacity: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(red, green, blue, scaled_alpha(alpha, opacity))
+}
+
+fn power_button(ui: &mut egui::Ui, base_size: f32, opacity: f32) -> egui::Response {
     let cell_size = base_size + ICON_CELL_PADDING;
     let (cell, response) =
         ui.allocate_exact_size(egui::vec2(cell_size, cell_size), egui::Sense::click());
@@ -5656,8 +5762,10 @@ fn power_button(ui: &mut egui::Ui, base_size: f32) -> egui::Response {
         Color32::from_gray(220)
     };
     let stroke = egui::Stroke::new((base_size / 18.0).clamp(1.4, 3.2), color);
-    ui.painter().add(egui::Shape::line(points, stroke));
-    ui.painter().line_segment(
+    let mut painter = ui.painter().clone();
+    painter.set_opacity(opacity);
+    painter.add(egui::Shape::line(points, stroke));
+    painter.line_segment(
         [
             center + egui::vec2(0.0, -radius * 1.35),
             center + egui::vec2(0.0, -radius * 0.05),
@@ -5667,7 +5775,7 @@ fn power_button(ui: &mut egui::Ui, base_size: f32) -> egui::Response {
     response
 }
 
-fn wifi_control(ui: &mut egui::Ui, base_size: f32) -> egui::Response {
+fn wifi_control(ui: &mut egui::Ui, base_size: f32, opacity: f32) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(
         egui::vec2(SYSTEM_CONTROL_SIZE, SYSTEM_CONTROL_SIZE),
         egui::Sense::click(),
@@ -5679,6 +5787,8 @@ fn wifi_control(ui: &mut egui::Ui, base_size: f32) -> egui::Response {
         Color32::from_gray(220)
     };
     let stroke = egui::Stroke::new((base_size / 20.0).clamp(1.4, 2.4), color);
+    let mut painter = ui.painter().clone();
+    painter.set_opacity(opacity);
     for radius in [base_size * 0.14, base_size * 0.24, base_size * 0.34] {
         let points = (0..=16)
             .map(|step| {
@@ -5686,9 +5796,9 @@ fn wifi_control(ui: &mut egui::Ui, base_size: f32) -> egui::Response {
                 center + egui::vec2(radius * angle.cos(), radius * angle.sin())
             })
             .collect();
-        ui.painter().add(egui::Shape::line(points, stroke));
+        painter.add(egui::Shape::line(points, stroke));
     }
-    ui.painter().circle_filled(
+    painter.circle_filled(
         center + egui::vec2(0.0, base_size * 0.28),
         (base_size / 16.0).clamp(1.5, 2.5),
         color,
@@ -5702,6 +5812,7 @@ fn volume_control(
     system_volume: &mut Option<f32>,
     volume_error: Option<&str>,
     volume_change: &mut Option<f32>,
+    opacity: f32,
 ) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(
         egui::vec2(SYSTEM_CONTROL_SIZE, SYSTEM_CONTROL_SIZE),
@@ -5722,7 +5833,9 @@ fn volume_control(
         center + egui::vec2(-settings.icon_size * 0.09, settings.icon_size * 0.1),
         center + egui::vec2(-settings.icon_size * 0.22, settings.icon_size * 0.1),
     ];
-    ui.painter().add(egui::Shape::convex_polygon(
+    let mut painter = ui.painter().clone();
+    painter.set_opacity(opacity);
+    painter.add(egui::Shape::convex_polygon(
         speaker.to_vec(),
         color,
         egui::Stroke::NONE,
@@ -5739,7 +5852,7 @@ fn volume_control(
                     )
             })
             .collect();
-        ui.painter().add(egui::Shape::line(points, stroke));
+        painter.add(egui::Shape::line(points, stroke));
     }
 
     let popup_id = response.id.with("system-volume-popup");
@@ -6325,7 +6438,8 @@ mod tests {
         .unwrap();
         assert_eq!(config.icon_size, DEFAULT_ICON_SIZE);
         assert_eq!(config.vertical_padding, DEFAULT_VERTICAL_PADDING);
-        assert_eq!(config.opacity, DEFAULT_OPACITY);
+        assert_eq!(config.background_opacity, DEFAULT_OPACITY);
+        assert_eq!(config.icon_opacity, DEFAULT_ICON_OPACITY);
         assert!(!config.show_clock);
         assert!(!config.show_weather);
         assert!(!config.show_wifi);
@@ -6354,20 +6468,23 @@ mod tests {
     }
 
     #[test]
-    fn opacity_is_clamped_to_the_slider_range() {
-        let mut config: DockConfig =
-            serde_json::from_str(r#"{"groups":[{"name":"Général","shortcuts":[]}],"opacity":0}"#)
-                .unwrap();
+    fn opacities_are_clamped_to_the_slider_range() {
+        let mut config: DockConfig = serde_json::from_str(
+            r#"{"groups":[{"name":"Général","shortcuts":[]}],"opacity":0,"icon_opacity":0}"#,
+        )
+        .unwrap();
 
         config.normalize();
 
-        assert_eq!(config.opacity, MIN_OPACITY);
+        assert_eq!(config.background_opacity, MIN_OPACITY);
+        assert_eq!(config.icon_opacity, MIN_OPACITY);
     }
 
     #[test]
-    fn opacity_percent_maps_to_window_alpha() {
-        assert_eq!(opacity_to_alpha(MIN_OPACITY), 51);
-        assert_eq!(opacity_to_alpha(MAX_OPACITY), u8::MAX);
+    fn opacity_percent_scales_color_alpha() {
+        assert_eq!(scaled_alpha(u8::MAX, MIN_OPACITY), 51);
+        assert_eq!(scaled_alpha(u8::MAX, MAX_OPACITY), u8::MAX);
+        assert_eq!(scaled_alpha(175, MAX_OPACITY), 175);
     }
 
     #[test]
@@ -6390,7 +6507,8 @@ mod tests {
         config.weather_side = DockSide::Left;
         config.dock_position = DockPosition::Right;
         config.background_color = [80, 120, 160, 200];
-        config.opacity = 73;
+        config.background_opacity = 73;
+        config.icon_opacity = 64;
         config.language = AppLanguage::Spanish;
         config.weather_city = "Madrid".to_owned();
 
@@ -6403,7 +6521,8 @@ mod tests {
         assert_eq!(restored.weather_side, DockSide::Left);
         assert_eq!(restored.dock_position, DockPosition::Right);
         assert_eq!(restored.background_color, [80, 120, 160, 200]);
-        assert_eq!(restored.opacity, 73);
+        assert_eq!(restored.background_opacity, 73);
+        assert_eq!(restored.icon_opacity, 64);
         assert_eq!(restored.language, AppLanguage::Spanish);
         assert_eq!(restored.weather_city, "Madrid");
     }
