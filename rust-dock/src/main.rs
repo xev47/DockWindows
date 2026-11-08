@@ -1112,6 +1112,7 @@ struct DockApp {
     last_window_width: Option<f32>,
     last_window_height: Option<f32>,
     last_window_position: Option<egui::Pos2>,
+    resize_settle: u8,
     dock_layout: DockLayout,
     dragging_item: Option<DragItem>,
     group_drop_rects: Vec<Option<egui::Rect>>,
@@ -1282,6 +1283,7 @@ impl DockApp {
             last_window_width: None,
             last_window_height: None,
             last_window_position: None,
+            resize_settle: 0,
             dock_layout: DockLayout::default(),
             dragging_item: None,
             group_drop_rects: Vec::new(),
@@ -2046,6 +2048,11 @@ impl DockApp {
         if position_changed {
             ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(position));
             ctx.request_repaint_after(Duration::from_millis(100));
+        }
+        if width_changed || height_changed || position_changed {
+            // Laisse quelques images a la fenetre native pour appliquer sa
+            // nouvelle taille et redessiner le contenu a la bonne echelle.
+            self.resize_settle = 4;
         }
         self.last_window_width = Some(width);
         self.last_window_height = Some(height);
@@ -3405,6 +3412,16 @@ impl eframe::App for DockApp {
             self.pending_settings.merge(changes);
         }
         self.apply_live_settings();
+        if self.resize_settle > 0 {
+            if let (Some(width), Some(height)) = (self.last_window_width, self.last_window_height) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(width, height)));
+            }
+            if let Some(position) = self.last_window_position {
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(position));
+            }
+            self.resize_settle -= 1;
+            ctx.request_repaint();
+        }
         self.refresh_weather();
         if self.config.show_volume
             && self
