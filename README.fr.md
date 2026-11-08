@@ -8,7 +8,7 @@
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
 ![Licence](https://img.shields.io/badge/licence-GPL--3.0-blue)
 
-[![Télécharger Dock Windows 1.32.9](https://img.shields.io/badge/t%C3%A9l%C3%A9charger-DockWindows--1.32.9--x64.msi-2ea44f?logo=windows&logoColor=white)](https://github.com/xev47/DockWindows/raw/Version-1.32.9/releases/DockWindows-1.32.9-x64.msi)
+[![Télécharger Dock Windows 1.32.10](https://img.shields.io/badge/t%C3%A9l%C3%A9charger-DockWindows--1.32.10--x64.msi-2ea44f?logo=windows&logoColor=white)](https://github.com/xev47/DockWindows/raw/Version-1.32.10/releases/DockWindows-1.32.10-x64.msi)
 
 [English](README.md) · **Français**
 
@@ -94,7 +94,7 @@ raccourcis dans le menu Démarrer et sur le bureau, puis lance le dock à la fin
 l'installation. L'installateur de la dernière version est déposé dans
 [`releases/`](releases/) avec son empreinte SHA-256.
 
-**[Télécharger DockWindows-1.32.9-x64.msi](https://github.com/xev47/DockWindows/raw/Version-1.32.9/releases/DockWindows-1.32.9-x64.msi)** · [Empreinte SHA-256](https://github.com/xev47/DockWindows/raw/Version-1.32.9/releases/DockWindows-1.32.9-x64.msi.sha256)
+**[Télécharger DockWindows-1.32.10-x64.msi](https://github.com/xev47/DockWindows/raw/Version-1.32.10/releases/DockWindows-1.32.10-x64.msi)** · [Empreinte SHA-256](https://github.com/xev47/DockWindows/raw/Version-1.32.10/releases/DockWindows-1.32.10-x64.msi.sha256)
 
 Au premier démarrage, un assistant permet de choisir la langue du dock
 (français, anglais ou espagnol) et d'importer les raccourcis Windows : barre des
