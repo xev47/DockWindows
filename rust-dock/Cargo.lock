@@ -803,7 +803,7 @@ dependencies = [
 
 [[package]]
 name = "dock-windows"
-version = "1.32.7"
+version = "1.32.8"
 dependencies = [
  "chrono",
  "eframe",

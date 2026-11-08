@@ -1121,6 +1121,7 @@ struct DockApp {
     context_menu_open: bool,
     settings_popup_anchor: Option<egui::Rect>,
     settings_popup_position: Option<egui::Pos2>,
+    settings_panel_window_height: Option<f32>,
     settings_popup_has_focus: Arc<AtomicBool>,
     settings_popup_dismiss: Arc<AtomicBool>,
     settings_changes_receiver: Receiver<SettingsChanges>,
@@ -1292,6 +1293,7 @@ impl DockApp {
             context_menu_open: false,
             settings_popup_anchor: None,
             settings_popup_position: None,
+            settings_panel_window_height: None,
             settings_popup_has_focus: Arc::new(AtomicBool::new(false)),
             settings_popup_dismiss: Arc::new(AtomicBool::new(false)),
             settings_changes_receiver,
@@ -2029,6 +2031,10 @@ impl DockApp {
                 + preview_height
         };
         let height = height.min(max_height);
+        // Pendant l'ouverture du panneau, la fenetre native garde sa hauteur :
+        // seul le cadre du dock se redimensionne, sans rafale de changements
+        // de taille cote Windows.
+        let height = self.settings_panel_window_height.unwrap_or(height);
         let width_changed = self
             .last_window_width
             .map_or(true, |current| (current - width).abs() > 1.0);
@@ -2976,6 +2982,7 @@ impl DockApp {
                 .store(false, Ordering::Relaxed);
             self.settings_popup_dismiss.store(false, Ordering::Relaxed);
             self.settings_popup_position = None;
+            self.settings_panel_window_height = self.last_window_height;
         }
         let settings_viewport_id = egui::ViewportId::from_hash_of("settings-popup");
         let settings_popup_anchor = if settings_changes.dismiss_settings_popup {
@@ -2985,6 +2992,9 @@ impl DockApp {
                 .settings_popup_anchor
                 .or(self.settings_popup_anchor)
         };
+        if settings_popup_anchor.is_some() && self.settings_panel_window_height.is_none() {
+            self.settings_panel_window_height = self.last_window_height;
+        }
         // Un clic dans la fenetre du dock est forcement hors du panneau
         // (fenetre distincte) : on demande au panneau de se fermer.
         if !opened_settings_popup
@@ -3132,6 +3142,7 @@ impl DockApp {
             if settings_popup_anchor.is_none() {
                 ctx.send_viewport_cmd_to(settings_viewport_id, egui::ViewportCommand::Close);
                 self.settings_popup_position = None;
+                self.settings_panel_window_height = None;
             }
             self.settings_popup_anchor = settings_popup_anchor;
             ctx.request_repaint();
