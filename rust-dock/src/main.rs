@@ -5381,22 +5381,22 @@ fn group_manager(
             } else {
                 ui.label(name.as_str());
                 if ui
-                    .small_button(menu_label(MENU_ICON_RENAME, tr(language, "rename_group")))
+                    .small_button(MENU_ICON_RENAME)
+                    .on_hover_text(tr(language, "rename_group"))
                     .clicked()
                 {
                     editing = Some((index, name.clone()));
                     error = None;
                 }
-                if ui
-                    .add_enabled(
-                        group_names.len() > 1,
-                        egui::Button::new(menu_label(
-                            MENU_ICON_REMOVE,
-                            tr(language, "delete_group"),
-                        )),
-                    )
-                    .clicked()
-                {
+                let can_delete = group_names.len() > 1;
+                let delete =
+                    ui.add_enabled(can_delete, egui::Button::new(MENU_ICON_REMOVE).small());
+                let delete = if can_delete {
+                    delete.on_hover_text(tr(language, "delete_group"))
+                } else {
+                    delete.on_disabled_hover_text(tr(language, "delete_group"))
+                };
+                if delete.clicked() {
                     changes.delete_group = Some(index);
                 }
             }
