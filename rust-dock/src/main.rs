@@ -1110,7 +1110,6 @@ struct DockApp {
     last_window_height: Option<f32>,
     last_window_position: Option<egui::Pos2>,
     dock_layout: DockLayout,
-    dock_content_height: Option<f32>,
     dragging_item: Option<DragItem>,
     group_drop_rects: Vec<Option<egui::Rect>>,
     last_viewport_resizable: Option<bool>,
@@ -1281,7 +1280,6 @@ impl DockApp {
             last_window_height: None,
             last_window_position: None,
             dock_layout: DockLayout::default(),
-            dock_content_height: None,
             dragging_item: None,
             group_drop_rects: Vec::new(),
             last_viewport_resizable: Some(false),
@@ -1780,7 +1778,6 @@ impl DockApp {
         }
         if changed {
             self.settings_dirty = true;
-            self.dock_content_height = None;
         }
     }
 
@@ -1879,7 +1876,7 @@ impl DockApp {
                 max_wrapped_item_width,
             )
         };
-        let mut desired_height = if vertical {
+        let desired_height = if vertical {
             dock_window_height_with_system_controls(
                 shortcuts,
                 self.visible_running_app_count(),
@@ -1918,18 +1915,6 @@ impl DockApp {
             area_height: desired_height,
             wrap: !vertical && required_width > layout_width + 1.0,
         };
-        // Garde-fou : si le contenu dessine depasse la hauteur prevue, la
-        // fenetre s'agrandit au lieu de rogner le haut du dock. On ne conserve
-        // que le cas « trop grand », pour que reduire la taille des icones ou
-        // l'espacement puisse de nouveau diminuer la fenetre.
-        if let Some(content_height) = self.dock_content_height {
-            let required_height = content_height
-                + 2.0 * f32::from(self.config.vertical_padding)
-                + 2.0 * DOCK_FRAME_STROKE_WIDTH;
-            if required_height > desired_height {
-                desired_height = required_height.min(max_height);
-            }
-        }
         let preview_available_width = if vertical {
             (available_dock_width(ctx) - desired_width - POPUP_GAP).max(1.0)
         } else {
@@ -2210,7 +2195,7 @@ impl DockApp {
         let mut settings_changes = std::mem::take(&mut self.pending_settings);
         let mut context_menu_open = false;
 
-        let scroll_output = egui::ScrollArea::vertical()
+        egui::ScrollArea::vertical()
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
             .scroll_offset(egui::Vec2::ZERO)
             .min_scrolled_width(0.0)
@@ -2770,7 +2755,6 @@ impl DockApp {
                     },
                 );
             });
-        self.dock_content_height = Some(scroll_output.content_size.y);
 
         let _ = background_response.context_menu(|ui| {
             show_scrollable_menu(ui, "background-context-menu", |ui| {
@@ -3375,7 +3359,6 @@ impl DockApp {
 
         changed |= std::mem::take(&mut self.settings_dirty);
         if changed {
-            self.dock_content_height = None;
             self.settings_persist_pending = true;
         }
         if self.settings_persist_pending
