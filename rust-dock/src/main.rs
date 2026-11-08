@@ -35,6 +35,7 @@ const DEFAULT_ICON_SIZE: f32 = 38.0;
 const MIN_ICON_SIZE: f32 = 24.0;
 const MAX_ICON_SIZE: f32 = 48.0;
 const DEFAULT_VERTICAL_PADDING: u8 = 2;
+const MIN_VERTICAL_PADDING: u8 = 2;
 const MAX_VERTICAL_PADDING: u8 = 30;
 const DEFAULT_OPACITY: u8 = 100;
 const DEFAULT_ICON_OPACITY: u8 = 100;
@@ -887,7 +888,9 @@ impl DockConfig {
         } else {
             self.icon_size = self.icon_size.clamp(MIN_ICON_SIZE, MAX_ICON_SIZE);
         }
-        self.vertical_padding = self.vertical_padding.min(MAX_VERTICAL_PADDING);
+        self.vertical_padding = self
+            .vertical_padding
+            .clamp(MIN_VERTICAL_PADDING, MAX_VERTICAL_PADDING);
         self.background_opacity = self.background_opacity.clamp(MIN_OPACITY, MAX_OPACITY);
         self.icon_opacity = self.icon_opacity.clamp(MIN_OPACITY, MAX_OPACITY);
         self.hidden_apps = self
@@ -1696,7 +1699,8 @@ impl DockApp {
             }
         }
         if let Some(vertical_padding) = self.pending_settings.vertical_padding {
-            let vertical_padding = vertical_padding.min(MAX_VERTICAL_PADDING);
+            let vertical_padding =
+                vertical_padding.clamp(MIN_VERTICAL_PADDING, MAX_VERTICAL_PADDING);
             if self.config.vertical_padding != vertical_padding {
                 self.config.vertical_padding = vertical_padding;
                 changed = true;
@@ -3186,7 +3190,8 @@ impl DockApp {
             }
         }
         if let Some(vertical_padding) = settings_changes.vertical_padding {
-            let vertical_padding = vertical_padding.min(MAX_VERTICAL_PADDING);
+            let vertical_padding =
+                vertical_padding.clamp(MIN_VERTICAL_PADDING, MAX_VERTICAL_PADDING);
             if self.config.vertical_padding != vertical_padding {
                 self.config.vertical_padding = vertical_padding;
                 changed = true;
@@ -3458,12 +3463,13 @@ impl eframe::App for DockApp {
                     .show(ctx, |ui| {
                         ui.set_width(area_width);
                         ui.set_min_height(area_height);
+                        let dock_radius = ((area_height * 0.5).clamp(8.0, 28.0)) as u8;
                         egui::Frame::new()
                             .fill(dock_background_color_with_opacity(
                                 self.config.background_color,
                                 self.config.background_opacity,
                             ))
-                            .corner_radius(egui::CornerRadius::same(28))
+                            .corner_radius(egui::CornerRadius::same(dock_radius))
                             .stroke(egui::Stroke::new(
                                 1.0,
                                 Color32::from_white_alpha(scaled_alpha(
@@ -5054,9 +5060,12 @@ fn settings_controls(
         ui.horizontal(|ui| {
             if ui
                 .add(
-                    egui::Slider::new(&mut vertical_padding, 0..=MAX_VERTICAL_PADDING)
-                        .step_by(1.0)
-                        .show_value(false),
+                    egui::Slider::new(
+                        &mut vertical_padding,
+                        MIN_VERTICAL_PADDING..=MAX_VERTICAL_PADDING,
+                    )
+                    .step_by(1.0)
+                    .show_value(false),
                 )
                 .changed()
             {
